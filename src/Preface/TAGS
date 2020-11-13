@@ -1,0 +1,31 @@
+
+./Utils.hs,137
+module Plus.Utils Plus.Utils0,1
+decodeUtf8' decodeUtf8'16,17
+toString toString20,21
+hashOf hashOf24,25
+(<(</>)31,32
+a a32,33
+
+./Application.hs,444
+module Plus.Application Plus.Application0,1
+data Trainee Trainee10,11
+data Trainee = TraineeTrainee10,11
+    { name name11,12
+    , company company12,13
+    , address address13,14
+data RegistrationResult RegistrationResult17,18
+data RegistrationResult = RegistrationResultRegistrationResult17,18
+    { result result18,19
+type RegistrationAPIRegistrationAPI22,23
+registrationAPI registrationAPI26,27
+plusApp plusApp29,30
+
+./Server.hs,251
+module Plus.Server Plus.Server0,1
+data AppServer AppServer18,19
+data AppServer = AppServerAppServer18,19
+    { serverThread serverThread19,20
+    , serverPort serverPort20,21
+startAppServer startAppServer23,24
+stopServer stopServer41,42

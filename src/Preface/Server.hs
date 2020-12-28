@@ -17,15 +17,17 @@ data AppServer
   = AppServer
       { serverThread :: Maybe (Async ()),
         serverPort :: Port,
-        serverName :: Text
+        serverName :: Text,
+        serverLogger :: LoggerEnv IO
       }
 
-startAppServer :: Text -> [Text] -> Port -> IO Application -> IO AppServer
+-- |Starts a new application server and returns its configuration as an `AppServer` structure.
+startAppServer :: Text -> [Text] -> Port -> (LoggerEnv IO -> IO Application) -> IO AppServer
 startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
   logger <- newLog serverAssignedName
   loggerMiddleware <- runHTTPLog logger
-  (realPort, thread) <- server loggerMiddleware
-  pure $ AppServer (Just thread) realPort (actualServerName realPort)
+  (realPort, thread) <- server logger loggerMiddleware
+  pure $ AppServer (Just thread) realPort (actualServerName realPort) logger
   where
 
     actualServerName port =
@@ -38,12 +40,12 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
         then pure (listenPort, Warp.run listenPort)
         else openFreePort >>= \(port, socket) -> pure (port, Warp.runSettingsSocket defaultSettings socket)
 
-    server logger = do
+    server logger loggerMiddleware = do
       (realPort, appRunner) <- makeWarpRunner
-      app <- makeApp
+      app <- makeApp logger
       thread <-
         async $ appRunner
-          $ logger
+          $ loggerMiddleware
           $ rejectInvalidHost (encodeUtf8 $ actualServerName realPort)
           $ handleCors (fmap encodeUtf8 allowedOrigins)
           $ app
@@ -64,9 +66,9 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
 -- This a simple wrapper over `Control.Concurrent.Async.wait` in order to alleviate
 -- the need to have an explicitly dependency on it.
 waitServer :: AppServer -> IO ()
-waitServer (AppServer (Just thread) _ _) = wait thread
+waitServer (AppServer (Just thread) _ _ _) = wait thread
 waitServer _ = pure ()
 
 stopServer :: AppServer -> IO ()
-stopServer (AppServer (Just thread) _ _) = cancel thread
+stopServer (AppServer (Just thread) _ _ _) = cancel thread
 stopServer _ = pure ()

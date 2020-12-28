@@ -14,6 +14,7 @@ module Preface.Log
     newLog,
     stopLogger,
     fakeLogger,
+    loggerId,
 
     -- * Logging functions
     logInfo,
@@ -22,6 +23,7 @@ module Preface.Log
   )
 where
 
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (Async, async, cancel)
 import Control.Concurrent.Chan.Unagi
   ( InChan,
@@ -30,7 +32,7 @@ import Control.Concurrent.Chan.Unagi
     readChan,
     writeChan,
   )
-import Control.Exception.Safe (catch, IOException)
+import Control.Exception.Safe (IOException, catch)
 import Control.Monad (forever)
 import Control.Monad.Trans (MonadIO (..))
 import Data.Aeson
@@ -44,7 +46,6 @@ import Data.Time.Clock
   )
 import System.IO (Handle, stdout)
 import System.Log.FastLogger
-import Control.Concurrent (myThreadId)
 
 -- | Environment to control a logger thread.
 data LoggerEnv m = LoggerEnv
@@ -89,14 +90,14 @@ logEvent' chan logId message = liftIO $ do
   ts <- getCurrentTime
   tid <- myThreadId
   writeChan chan $
-      LBS.toStrict $
-        encode $
-          object
-            [ "timestamp" .= ts,
-              "loggerId" .= logId,
-              "threadId" .= show tid,
-              "message" .= message
-            ]
+    LBS.toStrict $
+      encode $
+        object
+          [ "timestamp" .= ts,
+            "loggerId" .= logId,
+            "threadId" .= show tid,
+            "message" .= message
+          ]
 
 withLog' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m b -> m b
 withLog' chan logId message act = do
@@ -111,39 +112,39 @@ logStart :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> a -> m ()
 logStart chan logId ts command = liftIO $ do
   tid <- myThreadId
   writeChan chan $
-      LBS.toStrict $
-        encode $
-          object
-            [ "timestamp" .= ts,
-              "loggerId" .= logId,
-              "threadId" .= show tid,
-              "message" .= command
-            ]
+    LBS.toStrict $
+      encode $
+        object
+          [ "timestamp" .= ts,
+            "loggerId" .= logId,
+            "threadId" .= show tid,
+            "message" .= command
+          ]
 
 logEnd :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> UTCTime -> a -> m ()
 logEnd chan logId ts en outcome = liftIO $ do
   tid <- myThreadId
   writeChan chan $
-      LBS.toStrict $
-        encode $
-          object
-            [ "timestamp" .= en,
-              "loggerId" .= logId,
-              "threadId" .= show tid,
-              "durationMs" .= ((diffUTCTime en ts) * 1000),
-              "message" .= outcome
-            ]
+    LBS.toStrict $
+      encode $
+        object
+          [ "timestamp" .= en,
+            "loggerId" .= logId,
+            "threadId" .= show tid,
+            "durationMs" .= ((diffUTCTime en ts) * 1000),
+            "message" .= outcome
+          ]
 
 logError' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
 logError' chan logId err = liftIO $ do
   ts <- getCurrentTime
   tid <- myThreadId
   writeChan chan $
-      LBS.toStrict $
-        encode $
-          object
-            [ "timestamp" .= ts,
-              "loggerId" .= logId,
-              "threadId" .= show tid,
-              "error" .= err
-            ]
+    LBS.toStrict $
+      encode $
+        object
+          [ "timestamp" .= ts,
+            "loggerId" .= logId,
+            "threadId" .= show tid,
+            "error" .= err
+          ]

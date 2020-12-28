@@ -18,11 +18,11 @@ data AppServer
       { serverThread :: Maybe (Async ()),
         serverPort :: Port,
         serverName :: Text,
-        serverLogger :: LoggerEnv IO
+        serverLogger :: LoggerEnv
       }
 
 -- |Starts a new application server and returns its configuration as an `AppServer` structure.
-startAppServer :: Text -> [Text] -> Port -> (LoggerEnv IO -> IO Application) -> IO AppServer
+startAppServer :: Text -> [Text] -> Port -> (LoggerEnv -> IO Application) -> IO AppServer
 startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
   logger <- newLog serverAssignedName
   loggerMiddleware <- runHTTPLog logger

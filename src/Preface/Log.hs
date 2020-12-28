@@ -24,7 +24,7 @@ module Preface.Log
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Concurrent.Async (Async, async, cancel)
+import Control.Concurrent.Async (async, cancel)
 import Control.Concurrent.Chan.Unagi
   ( InChan,
     OutChan,
@@ -48,22 +48,22 @@ import System.IO (Handle, stdout)
 import System.Log.FastLogger
 
 -- | Environment to control a logger thread.
-data LoggerEnv m = LoggerEnv
+data LoggerEnv = LoggerEnv
   { logger :: Maybe Logger,
     loggerId :: Text,
-    logInfo :: forall a. (ToJSON a) => a -> m (),
-    logError :: forall a. (ToJSON a) => a -> m (),
-    withLog :: forall a b. (ToJSON a) => a -> m b -> m b,
-    stopLogger :: m ()
+    logInfo :: forall a m. (MonadIO m, ToJSON a) => a -> m (),
+    logError :: forall a m. (MonadIO m, ToJSON a) => a -> m (),
+    withLog :: forall a b m. (MonadIO m, ToJSON a) => a -> m b -> m b,
+    stopLogger :: forall m . MonadIO m => m ()
   }
 
 type Logger = InChan BS.ByteString
 
-fakeLogger :: (MonadIO m) => LoggerEnv m
+fakeLogger :: LoggerEnv
 fakeLogger = LoggerEnv Nothing "foo" (const $ pure ()) (const $ pure ()) (\_ -> id) (pure ())
 
 -- | Starts an asynchronous log-processing thread and returns an initialised `LoggerEnv`.
-newLog :: (MonadIO m) => Text -> m (LoggerEnv m)
+newLog :: (MonadIO m) => Text -> m LoggerEnv
 newLog loggerId = liftIO $ do
   (inchan, outchan) <- newChan
   loggerThread <- async $ runLog outchan stdout
@@ -71,8 +71,7 @@ newLog loggerId = liftIO $ do
       logInfo a = logEvent' inchan loggerId a
       logError a = logError' inchan loggerId a
       withLog a act = withLog' inchan loggerId a act
-      stopLogger = stopLogger' loggerThread
-  return $ LoggerEnv {..}
+  return $ LoggerEnv {stopLogger =  liftIO (cancel loggerThread),.. }
 
 runLog :: OutChan BS.ByteString -> Handle -> IO a
 runLog chan hdl =
@@ -81,9 +80,6 @@ runLog chan hdl =
     -- ignore IOException in order to not kill the logging thread even if the output
     -- `Handle` is closed
     (BS.hPutStr hdl . (<> "\n") $ toLog) `catch` \(_ :: IOException) -> pure ()
-
-stopLogger' :: (MonadIO m) => Async () -> m ()
-stopLogger' = liftIO . cancel
 
 logEvent' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
 logEvent' chan logId message = liftIO $ do

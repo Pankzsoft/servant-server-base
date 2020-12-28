@@ -44,6 +44,7 @@ import Data.Time.Clock
   )
 import System.IO (Handle, stdout)
 import System.Log.FastLogger
+import Control.Concurrent (myThreadId)
 
 -- | Environment to control a logger thread.
 data LoggerEnv m = LoggerEnv
@@ -84,15 +85,16 @@ stopLogger' :: (MonadIO m) => Async () -> m ()
 stopLogger' = liftIO . cancel
 
 logEvent' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
-logEvent' chan logId message = do
-  ts <- liftIO getCurrentTime
-  liftIO $
-    writeChan chan $
+logEvent' chan logId message = liftIO $ do
+  ts <- getCurrentTime
+  tid <- myThreadId
+  writeChan chan $
       LBS.toStrict $
         encode $
           object
             [ "timestamp" .= ts,
               "loggerId" .= logId,
+              "threadId" .= show tid,
               "message" .= message
             ]
 
@@ -106,39 +108,42 @@ withLog' chan logId message act = do
   pure b
 
 logStart :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> a -> m ()
-logStart chan logId ts command =
-  liftIO $
-    writeChan chan $
+logStart chan logId ts command = liftIO $ do
+  tid <- myThreadId
+  writeChan chan $
       LBS.toStrict $
         encode $
           object
             [ "timestamp" .= ts,
-              "servicer" .= logId,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
               "message" .= command
             ]
 
 logEnd :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> UTCTime -> a -> m ()
-logEnd chan logId ts en outcome =
-  liftIO $
-    writeChan chan $
+logEnd chan logId ts en outcome = liftIO $ do
+  tid <- myThreadId
+  writeChan chan $
       LBS.toStrict $
         encode $
           object
             [ "timestamp" .= en,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
               "durationMs" .= ((diffUTCTime en ts) * 1000),
-              "servicer" .= logId,
               "message" .= outcome
             ]
 
 logError' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
 logError' chan logId err = liftIO $ do
-  ts <- liftIO getCurrentTime
-  liftIO $
-    writeChan chan $
+  ts <- getCurrentTime
+  tid <- myThreadId
+  writeChan chan $
       LBS.toStrict $
         encode $
           object
             [ "timestamp" .= ts,
-              "servicer" .= logId,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
               "error" .= err
             ]

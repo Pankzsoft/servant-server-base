@@ -12,10 +12,14 @@ import Network.Wai.Middleware.RequestLogger
 import Network.Wai.Middleware.RequestLogger.JSON
 import Preface.Log
 import Network.Wai(Application)
+import Data.Functor (void)
 
+
+-- | An instance of an "application" server which can be used to control
+-- it.
 data AppServer
   = AppServer
-      { serverThread :: Maybe (Async ()),
+      { serverThread :: [Async ()],
         serverPort :: Port,
         serverName :: Text,
         serverLogger :: LoggerEnv
@@ -27,7 +31,7 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
   logger <- newLog serverAssignedName
   loggerMiddleware <- runHTTPLog logger
   (realPort, thread) <- server logger loggerMiddleware
-  pure $ AppServer (Just thread) realPort (actualServerName realPort) logger
+  pure $ AppServer [thread] realPort (actualServerName realPort) logger
   where
 
     actualServerName port =
@@ -66,9 +70,7 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
 -- This a simple wrapper over `Control.Concurrent.Async.wait` in order to alleviate
 -- the need to have an explicitly dependency on it.
 waitServer :: AppServer -> IO ()
-waitServer (AppServer (Just thread) _ _ _) = wait thread
-waitServer _ = pure ()
+waitServer (AppServer threads _ _ _) = void $ waitAnyCancel threads
 
 stopServer :: AppServer -> IO ()
-stopServer (AppServer (Just thread) _ _ _) = cancel thread
-stopServer _ = pure ()
+stopServer (AppServer threads _ _ logger) = stopLogger logger >> mapM_ cancel threads

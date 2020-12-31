@@ -50,7 +50,6 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
       thread <-
         async $ appRunner
           $ loggerMiddleware
-          $ rejectInvalidHost (encodeUtf8 $ actualServerName realPort)
           $ handleCors (fmap encodeUtf8 allowedOrigins)
           $ app
       pure (realPort, thread)

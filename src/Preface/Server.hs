@@ -26,8 +26,8 @@ data AppServer
       }
 
 -- |Starts a new application server and returns its configuration as an `AppServer` structure.
-startAppServer :: Text -> [Text] -> Port -> (LoggerEnv -> IO Application) -> IO AppServer
-startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
+startAppServer :: Text -> WithCORS -> Port -> (LoggerEnv -> IO Application) -> IO AppServer
+startAppServer serverAssignedName cors listenPort makeApp = do
   logger <- newLog serverAssignedName
   loggerMiddleware <- runHTTPLog logger
   (realPort, thread) <- server logger loggerMiddleware
@@ -44,13 +44,18 @@ startAppServer serverAssignedName allowedOrigins listenPort makeApp = do
         then pure (listenPort, Warp.run listenPort)
         else openFreePort >>= \(port, socket) -> pure (port, Warp.runSettingsSocket defaultSettings socket)
 
+    withCors realPort (WithCORS allowedOrigins) =
+      rejectInvalidHost (encodeUtf8 $ actualServerName realPort)
+      . handleCors allowedOrigins
+    withCors _ NoCORS = id
+
     server logger loggerMiddleware = do
       (realPort, appRunner) <- makeWarpRunner
       app <- makeApp logger
       thread <-
         async $ appRunner
           $ loggerMiddleware
-          $ handleCors (fmap encodeUtf8 allowedOrigins)
+          $ withCors realPort cors
           $ app
       pure (realPort, thread)
 

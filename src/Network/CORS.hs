@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.CORS
-  ( handleCors,
+  ( WithCORS (..),
+    handleCors,
     rejectInvalidHost,
   )
 where
@@ -14,6 +15,10 @@ import Network.Wai.Middleware.Cors
     cors,
     simpleHeaders,
   )
+
+data WithCORS
+  = NoCORS
+  | WithCORS [Origin]
 
 -- | Reject request if `Host` header is not equal to given `serverName`
 rejectInvalidHost :: Origin -> Middleware
@@ -30,14 +35,16 @@ handleCors origins = policy $ Just (origins, True)
 
 policy :: Maybe ([Origin], Bool) -> Middleware
 policy origins =
-  cors $ const $ Just $
-    CorsResourcePolicy
-      { corsOrigins = origins,
-        corsMethods = ["OPTIONS", "GET", "POST", "PUT", "HEAD"],
-        corsRequestHeaders = "content-type" : "authorization" : simpleHeaders,
-        corsExposedHeaders = Nothing,
-        corsMaxAge = Nothing,
-        corsVaryOrigin = False,
-        corsRequireOrigin = False,
-        corsIgnoreFailures = False
-      }
+  cors $
+    const $
+      Just $
+        CorsResourcePolicy
+          { corsOrigins = origins,
+            corsMethods = ["OPTIONS", "GET", "POST", "PUT", "HEAD"],
+            corsRequestHeaders = "content-type" : "authorization" : simpleHeaders,
+            corsExposedHeaders = Nothing,
+            corsMaxAge = Nothing,
+            corsVaryOrigin = False,
+            corsRequireOrigin = False,
+            corsIgnoreFailures = False
+          }

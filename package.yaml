@@ -28,6 +28,7 @@ library:
   - aeson
   - async
   - base16-bytestring
+  - base64-bytestring
   - bytestring
   - case-insensitive
   - cassava

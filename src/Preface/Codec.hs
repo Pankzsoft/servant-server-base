@@ -1,75 +1,87 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE ViewPatterns      #-}
-module Preface.Codec
-  ( Base64
-  , Hex
-  , Encoded(..), pattern EncodedHex, pattern EncodedBase64
-  , encodedText, encodedHex
-  , mkEncodedHex
-  , mkEncodedBase64
-  , genRandomBase64
-  , genRandomBaseHex
-  , toBase64Text
-  , fromBase64Text
-  , encodeBase64
-  , fromHex
-  , toHex
-  ) where
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
-import           Crypto.Random.Entropy
-import           Data.Aeson
-import           Data.Bifunctor
-import qualified Data.ByteString.Base16       as B16
-import qualified Data.ByteString.Base64       as B64
-import qualified Data.ByteString.Char8        as B
-import qualified Data.ByteString         as BS
-import           Data.String
-import qualified Data.Text                    as T
-import qualified Data.Text.Encoding           as TE
-import           Data.Text.ToText
+module Preface.Codec
+  ( Base64,
+    Hex,
+    Encoded (..),
+    pattern EncodedHex,
+    pattern EncodedBase64,
+    encodedText,
+    encodedHex,
+    genRandomBase64,
+    genRandomBaseHex,
+    toBase64,
+    fromBase64,
+    encodeBase64,
+    fromHex,
+    toHex,
+  )
+where
+
+import Crypto.Random.Entropy
+import Data.Aeson hiding (decode, encode)
+import Data.Bifunctor
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as B16
+import qualified Data.ByteString.Base64 as B64
+import Data.Maybe (fromJust)
+import Data.String
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import Data.Text.ToText
 
 data Base64
+
 data Hex
 
-data Encoded code = ValidEncoded B.ByteString
-                  | InvalidEncoded T.Text -- ^ For legacy reasons.
+class Codec base where
+  encode :: Encoded base -> BS.ByteString
+  decode :: BS.ByteString -> Maybe (Encoded base)
+
+instance Codec Hex where
+  encode (Encoded bs) = B16.encode bs
+  decode bs = case B16.decode bs of
+    (r, u) | BS.null u -> pure (Encoded r)
+    _ -> Nothing
+
+instance Codec Base64 where
+  encode (Encoded bs) = B64.encode bs
+  decode = either (const Nothing) (Just . Encoded) . B64.decode
+
+data Encoded code = Encoded BS.ByteString
   deriving (Eq, Ord)
 
 instance Show (Encoded Hex) where
-  show (ValidEncoded t) = B.unpack (B16.encode t)
-  show (InvalidEncoded t) = T.unpack t
+  show (Encoded t) = fmap (toEnum . fromIntegral) $ BS.unpack (B16.encode t)
 
 instance Show (Encoded Base64) where
-  show (ValidEncoded t) = B.unpack (B64.encode t)
-  show (InvalidEncoded t) = T.unpack t
+  show (Encoded t) = fmap (toEnum . fromIntegral) $ BS.unpack (B64.encode t)
 
 instance Read (Encoded Hex) where
   readsPrec n = fmap (first fromString) . readsPrec n
 
-instance ToJSON (Encoded Hex) where
-  toJSON (ValidEncoded t) = String (TE.decodeUtf8 (B16.encode t))
-  toJSON (InvalidEncoded t) = String t
+instance Codec base => ToJSON (Encoded base) where
+  toJSON t = String (TE.decodeUtf8 (encode t))
 
-instance FromJSON (Encoded Hex) where
-  parseJSON (String t) = case B16.decode (TE.encodeUtf8 t) of
-                         (r, u) | B.null u -> pure (ValidEncoded r)
-                         _ -> pure (InvalidEncoded t)
-  parseJSON v          = fail $ "not a valid hexadecimal encoded string: "  ++ show v
+instance Codec base => FromJSON (Encoded base) where
+  parseJSON (String t) = case decode (TE.encodeUtf8 t) of
+    Just r -> pure r
+    _ -> fail $ "not a valid hexadecimal encoded string: " <> show t
+  parseJSON v = fail $ "not a valid hexadecimal encoded string: " <> show v
 
-instance IsString (Encoded Hex) where
-  fromString t = case B16.decode (fromString t) of
-                 (r, u) | B.null u -> ValidEncoded r
-                 _ -> InvalidEncoded (fromString t)
+instance Codec base => IsString (Encoded base) where
+  fromString t = case decode (fromString t) of
+    Just r -> r
+    _ -> error $ "not a valid encoded string: " <> t
 
 instance ToText (Encoded Hex) where
-  toText (ValidEncoded t) = TE.decodeUtf8 (B16.encode t)
-  toText (InvalidEncoded t) = t
+  toText (Encoded t) = TE.decodeUtf8 (B16.encode t)
 
 instance ToText (Encoded Base64) where
-  toText (ValidEncoded t) = TE.decodeUtf8 (B64.encode t)
-  toText (InvalidEncoded t) = t
+  toText (Encoded t) = TE.decodeUtf8 (B64.encode t)
 
 encodedText :: ToText a => a -> T.Text
 encodedText = toText
@@ -80,45 +92,40 @@ encodedHex = encodedText
 encodedBase64 :: Encoded Base64 -> T.Text
 encodedBase64 = encodedText
 
-mkEncodedHex :: T.Text -> Encoded Hex
-mkEncodedHex t = case B16.decode (TE.encodeUtf8 t) of
-  (r, u) | B.null u -> ValidEncoded r
-  _ -> InvalidEncoded t
-
-mkEncodedBase64 :: T.Text -> Encoded Base64
-mkEncodedBase64 t = case B64.decode (TE.encodeUtf8 t) of
-  Right r -> ValidEncoded r
-  Left _ -> InvalidEncoded t
+mkEncoded :: Codec base => T.Text -> Maybe (Encoded base)
+mkEncoded = decode . TE.encodeUtf8
 
 pattern EncodedHex :: T.Text -> Encoded Hex
-pattern EncodedHex t <- (encodedHex -> t) where
-  EncodedHex t = mkEncodedHex t
+pattern EncodedHex t <-
+  (encodedHex -> t)
+  where
+    EncodedHex t = fromJust $ mkEncoded t
 
 pattern EncodedBase64 :: T.Text -> Encoded Base64
-pattern EncodedBase64 t <- (encodedBase64 -> t) where
-  EncodedBase64 t = mkEncodedBase64 t
+pattern EncodedBase64 t <-
+  (encodedBase64 -> t)
+  where
+    EncodedBase64 t = fromJust $ mkEncoded t
 
 -- | Generates a cryptographically secure random string of given length
 genRandomBase64 :: Int -> IO (Encoded Base64)
-genRandomBase64 len = ValidEncoded <$> getEntropy len
+genRandomBase64 len = Encoded <$> getEntropy len
 
 -- | Generates a cryptographically secure random string of given length producing only hexadecimal characters
 genRandomBaseHex :: Int -> IO (Encoded Hex)
-genRandomBaseHex len = ValidEncoded <$> getEntropy len
+genRandomBaseHex len = Encoded <$> getEntropy len
 
-toBase64Text :: BS.ByteString -> Encoded Base64
-toBase64Text = ValidEncoded
+toBase64 :: BS.ByteString -> Encoded Base64
+toBase64 = Encoded
 
-fromBase64Text :: Encoded Base64 -> BS.ByteString
-fromBase64Text (InvalidEncoded t) = B64.decodeLenient (TE.encodeUtf8 t)
-fromBase64Text (ValidEncoded t) = t
+fromBase64 :: Encoded Base64 -> BS.ByteString
+fromBase64 (Encoded t) = t
 
 encodeBase64 :: BS.ByteString -> BS.ByteString
 encodeBase64 = B64.encode
 
 fromHex :: Encoded Hex -> BS.ByteString
-fromHex (ValidEncoded t) = t
-fromHex (InvalidEncoded _) = error "fromHex: should never happen"
+fromHex (Encoded t) = t
 
 toHex :: BS.ByteString -> Encoded Hex
-toHex = ValidEncoded
+toHex = Encoded

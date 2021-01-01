@@ -100,4 +100,9 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
+    - bytestring
     - servant-server-base
+    - hspec
+    - hspec-discover
+    - QuickCheck
+    - quickcheck-classes

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7f77941099a13d6f0e711af9940e937dca26a232bfee00c9d6669dcd4c7e6889
+-- hash: 5e8c8913db740ecfbaf14142ebd51f714b670423caac36917099ea1b7142f2ff
 
 name:           servant-server-base
 version:        0.1.0.0
@@ -98,12 +98,18 @@ test-suite servant-server-base-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Preface.CodecSpec
       Paths_servant_server_base
   hs-source-dirs:
       test
   default-extensions: CPP DataKinds DeriveAnyClass DeriveGeneric DerivingStrategies FlexibleContexts FlexibleInstances GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns OverloadedStrings RecordWildCards TemplateHaskell TypeApplications TypeOperators ScopedTypeVariables
   ghc-options: -Wall -Werror -fno-warn-orphans -Wno-unticked-promoted-constructors -optP-Wno-nonportable-include-path -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , hspec
+    , hspec-discover
+    , quickcheck-classes
     , servant-server-base
   default-language: Haskell2010

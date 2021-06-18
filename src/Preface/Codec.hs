@@ -44,7 +44,7 @@ class Codec base where
 instance Codec Hex where
   encode (Encoded bs) = B16.encode bs
   decode bs = case B16.decode bs of
-    (r, u) | BS.null u -> pure (Encoded r)
+    Right u -> pure (Encoded u)
     _ -> Nothing
 
 instance Codec Base64 where

@@ -27,11 +27,11 @@ data AppServer
 
 -- |Starts a new application server and returns its configuration as an `AppServer` structure.
 startAppServer :: Text -> WithCORS -> Port -> (LoggerEnv -> IO Application) -> IO AppServer
-startAppServer serverAssignedName cors listenPort makeApp = do
-  logger <- newLog serverAssignedName
-  loggerMiddleware <- runHTTPLog logger
-  (realPort, thread) <- server logger loggerMiddleware
-  pure $ AppServer [thread] realPort (actualServerName realPort) logger
+startAppServer serverAssignedName cors listenPort makeApp =
+  withLogger serverAssignedName $ \ logger -> do
+    loggerMiddleware <- runHTTPLog logger
+    (realPort, thread) <- server logger loggerMiddleware
+    pure $ AppServer [thread] realPort (actualServerName realPort) logger
   where
 
     actualServerName port =

@@ -12,6 +12,7 @@ module Preface.Log
 
     -- * Constructor & Destructor
     newLog,
+    withLogger,
     stopLogger,
     fakeLogger,
     loggerId,
@@ -24,7 +25,7 @@ module Preface.Log
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Concurrent.Async (async, cancel)
+import Control.Concurrent.Async (async, cancel, withAsync)
 import Control.Concurrent.Chan.Unagi
   ( InChan,
     OutChan,
@@ -54,13 +55,27 @@ data LoggerEnv = LoggerEnv
     logInfo :: forall a m. (MonadIO m, ToJSON a) => a -> m (),
     logError :: forall a m. (MonadIO m, ToJSON a) => a -> m (),
     withLog :: forall a b m. (MonadIO m, ToJSON a) => a -> m b -> m b,
-    stopLogger :: forall m . MonadIO m => m ()
+    stopLogger :: forall m. MonadIO m => m ()
   }
 
 type Logger = InChan BS.ByteString
 
 fakeLogger :: LoggerEnv
 fakeLogger = LoggerEnv Nothing "foo" (const $ pure ()) (const $ pure ()) (\_ -> id) (pure ())
+
+-- | Bracket-style logger creation.
+-- Takes a logger name and an action to run passing it the 'LoggerEnv' needed
+-- to log stuff.
+withLogger :: Text -> (LoggerEnv -> IO a) -> IO a
+withLogger loggerId action = do
+  (inchan, outchan) <- newChan
+  let logger = Just inchan
+      logInfo a = logEvent' inchan loggerId a
+      logError a = logError' inchan loggerId a
+      withLog a act = withLog' inchan loggerId a act
+  withAsync (runLog outchan stdout) $ \loggerThread -> do
+    let env = LoggerEnv {stopLogger = liftIO (cancel loggerThread), ..}
+    action env
 
 -- | Starts an asynchronous log-processing thread and returns an initialised `LoggerEnv`.
 newLog :: (MonadIO m) => Text -> m LoggerEnv
@@ -71,7 +86,7 @@ newLog loggerId = liftIO $ do
       logInfo a = logEvent' inchan loggerId a
       logError a = logError' inchan loggerId a
       withLog a act = withLog' inchan loggerId a act
-  return $ LoggerEnv {stopLogger =  liftIO (cancel loggerThread),.. }
+  return $ LoggerEnv {stopLogger = liftIO (cancel loggerThread), ..}
 
 runLog :: OutChan BS.ByteString -> Handle -> IO a
 runLog chan hdl =

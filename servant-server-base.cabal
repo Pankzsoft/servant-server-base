@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5e8c8913db740ecfbaf14142ebd51f714b670423caac36917099ea1b7142f2ff
+-- hash: 1a40553f3886af8406f62bd5fd64b0358d19d1ad6eb94d0699406ecd20abaa13
 
 name:           servant-server-base
 version:        0.1.0.0
@@ -50,7 +50,25 @@ library
       Paths_servant_server_base
   hs-source-dirs:
       src
-  default-extensions: CPP DataKinds DeriveAnyClass DeriveGeneric DerivingStrategies FlexibleContexts FlexibleInstances GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns OverloadedStrings RecordWildCards TemplateHaskell TypeApplications TypeOperators ScopedTypeVariables
+  default-extensions:
+      CPP
+      DataKinds
+      DeriveAnyClass
+      DeriveGeneric
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      OverloadedStrings
+      RecordWildCards
+      TemplateHaskell
+      TypeApplications
+      TypeOperators
+      ScopedTypeVariables
   ghc-options: -Wall -Werror -fno-warn-orphans -Wno-unticked-promoted-constructors -optP-Wno-nonportable-include-path
   build-depends:
       aeson
@@ -102,7 +120,25 @@ test-suite servant-server-base-test
       Paths_servant_server_base
   hs-source-dirs:
       test
-  default-extensions: CPP DataKinds DeriveAnyClass DeriveGeneric DerivingStrategies FlexibleContexts FlexibleInstances GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns OverloadedStrings RecordWildCards TemplateHaskell TypeApplications TypeOperators ScopedTypeVariables
+  default-extensions:
+      CPP
+      DataKinds
+      DeriveAnyClass
+      DeriveGeneric
+      DerivingStrategies
+      FlexibleContexts
+      FlexibleInstances
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      OverloadedStrings
+      RecordWildCards
+      TemplateHaskell
+      TypeApplications
+      TypeOperators
+      ScopedTypeVariables
   ghc-options: -Wall -Werror -fno-warn-orphans -Wno-unticked-promoted-constructors -optP-Wno-nonportable-include-path -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck

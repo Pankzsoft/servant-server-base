@@ -26,14 +26,14 @@ data AppServer
       }
 
 -- |Starts a new application server and returns its configuration as an `AppServer` structure.
-startAppServer :: Text -> WithCORS -> Port -> (LoggerEnv -> IO Application) -> IO AppServer
-startAppServer serverAssignedName cors listenPort makeApp =
+withAppServer :: Text -> WithCORS -> Port -> (LoggerEnv -> IO Application) -> (AppServer -> IO a) -> IO a
+withAppServer serverAssignedName cors listenPort makeApp action =
   withLogger serverAssignedName $ \ logger -> do
     loggerMiddleware <- runHTTPLog logger
     (realPort, thread) <- server logger loggerMiddleware
-    pure $ AppServer [thread] realPort (actualServerName realPort) logger
+    let appServer = AppServer [thread] realPort (actualServerName realPort) logger
+    action appServer
   where
-
     actualServerName port =
       if serverAssignedName == "localhost" || serverAssignedName == ""
         then pack ("localhost:" <> show port)
@@ -63,7 +63,9 @@ startAppServer serverAssignedName cors listenPort makeApp =
       mkRequestLogger $
         def
           { outputFormat = CustomOutputFormatWithDetails formatAsJSON,
-            destination = Callback (\str -> logInfo logger (decode @Value $ fromStrict $ fromLogStr str))
+            destination = Callback (\str ->
+                                     let toLog = (decode @Value $ fromStrict $ fromLogStr str)
+                                     in logInfo logger toLog)
           }
 
 -- | Wait for the server to terminate its execution.

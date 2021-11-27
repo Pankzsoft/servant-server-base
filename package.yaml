@@ -54,9 +54,9 @@ library:
   - safe-exceptions
   - servant
   - servant-server
+  - stm
   - text
   - time
-  - unagi-chan
   - unordered-containers
   - vector
   - wai
@@ -90,6 +90,19 @@ default-extensions:
 - TypeApplications
 - TypeOperators
 - ScopedTypeVariables
+
+executables:
+  example-server:
+    source-dirs: app
+    main: example-server.hs
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - base
+    - servant-server-base
+    - wai-app-static
 
 tests:
   servant-server-base-test:

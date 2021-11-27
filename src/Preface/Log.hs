@@ -11,7 +11,6 @@ module Preface.Log
     module System.Log.FastLogger,
 
     -- * Constructor & Destructor
-    newLog,
     withLogger,
     stopLogger,
     fakeLogger,
@@ -25,14 +24,9 @@ module Preface.Log
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Concurrent.Async (async, cancel, withAsync)
-import Control.Concurrent.Chan.Unagi
-  ( InChan,
-    OutChan,
-    newChan,
-    readChan,
-    writeChan,
-  )
+import Control.Concurrent.Async (cancel, withAsync)
+import Control.Concurrent.STM (atomically)
+import Control.Concurrent.STM.TBQueue
 import Control.Exception.Safe (IOException, catch)
 import Control.Monad (forever)
 import Control.Monad.Trans (MonadIO (..))
@@ -45,7 +39,7 @@ import Data.Time.Clock
     diffUTCTime,
     getCurrentTime,
   )
-import System.IO (Handle, stdout)
+import System.IO (Handle, hFlush, stdout)
 import System.Log.FastLogger
 
 -- | Environment to control a logger thread.
@@ -58,7 +52,7 @@ data LoggerEnv = LoggerEnv
     stopLogger :: forall m. MonadIO m => m ()
   }
 
-type Logger = InChan BS.ByteString
+type Logger = TBQueue BS.ByteString
 
 fakeLogger :: LoggerEnv
 fakeLogger = LoggerEnv Nothing "foo" (const $ pure ()) (const $ pure ()) (\_ -> id) (pure ())
@@ -68,94 +62,91 @@ fakeLogger = LoggerEnv Nothing "foo" (const $ pure ()) (const $ pure ()) (\_ -> 
 -- to log stuff.
 withLogger :: Text -> (LoggerEnv -> IO a) -> IO a
 withLogger loggerId action = do
-  (inchan, outchan) <- newChan
-  let logger = Just inchan
-      logInfo a = logEvent' inchan loggerId a
-      logError a = logError' inchan loggerId a
-      withLog a act = withLog' inchan loggerId a act
-  withAsync (runLog outchan stdout) $ \loggerThread -> do
+  queue <- newTBQueueIO 100
+  let logger = Just queue
+      logInfo a = logEvent' queue loggerId a
+      logError a = logError' queue loggerId a
+      withLog a act = withLog' queue loggerId a act
+  withAsync (runLog queue stdout) $ \loggerThread -> do
     let env = LoggerEnv {stopLogger = liftIO (cancel loggerThread), ..}
     action env
 
--- | Starts an asynchronous log-processing thread and returns an initialised `LoggerEnv`.
-newLog :: (MonadIO m) => Text -> m LoggerEnv
-newLog loggerId = liftIO $ do
-  (inchan, outchan) <- newChan
-  loggerThread <- async $ runLog outchan stdout
-  let logger = Just inchan
-      logInfo a = logEvent' inchan loggerId a
-      logError a = logError' inchan loggerId a
-      withLog a act = withLog' inchan loggerId a act
-  return $ LoggerEnv {stopLogger = liftIO (cancel loggerThread), ..}
-
-runLog :: OutChan BS.ByteString -> Handle -> IO a
-runLog chan hdl =
+runLog :: TBQueue BS.ByteString -> Handle -> IO a
+runLog queue hdl =
   forever $ do
-    toLog <- readChan chan
+    toLog <- atomically $ readTBQueue queue
     -- ignore IOException in order to not kill the logging thread even if the output
     -- `Handle` is closed
-    (BS.hPutStr hdl . (<> "\n") $ toLog) `catch` \(_ :: IOException) -> pure ()
+    ( do
+        BS.hPutStr hdl . (<> "\n") $ toLog
+        hFlush hdl
+      )
+      `catch` \(_ :: IOException) -> pure ()
 
 logEvent' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
-logEvent' chan logId message = liftIO $ do
+logEvent' queue logId message = liftIO $ do
   ts <- getCurrentTime
   tid <- myThreadId
-  writeChan chan $
-    LBS.toStrict $
-      encode $
-        object
-          [ "timestamp" .= ts,
-            "loggerId" .= logId,
-            "threadId" .= show tid,
-            "message" .= message
-          ]
+  let toLog =
+        LBS.toStrict $
+          encode $
+            object
+              [ "timestamp" .= ts,
+                "loggerId" .= logId,
+                "threadId" .= show tid,
+                "message" .= message
+              ]
+  atomically $ writeTBQueue queue toLog
 
 withLog' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m b -> m b
-withLog' chan logId message act = do
+withLog' queue logId message act = do
   startTime <- liftIO getCurrentTime
-  logStart chan logId startTime message
+  logStart queue logId startTime message
   b <- act
   endTime <- liftIO getCurrentTime
-  logEnd chan logId startTime endTime message
+  logEnd queue logId startTime endTime message
   pure b
 
 logStart :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> a -> m ()
-logStart chan logId ts command = liftIO $ do
+logStart queue logId ts command = liftIO $ do
   tid <- myThreadId
-  writeChan chan $
-    LBS.toStrict $
-      encode $
-        object
-          [ "timestamp" .= ts,
-            "loggerId" .= logId,
-            "threadId" .= show tid,
-            "message" .= command
-          ]
+  atomically $
+    writeTBQueue queue $
+      LBS.toStrict $
+        encode $
+          object
+            [ "timestamp" .= ts,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
+              "message" .= command
+            ]
 
 logEnd :: (ToJSON a, MonadIO m) => Logger -> Text -> UTCTime -> UTCTime -> a -> m ()
-logEnd chan logId ts en outcome = liftIO $ do
+logEnd queue logId ts en outcome = liftIO $ do
   tid <- myThreadId
-  writeChan chan $
-    LBS.toStrict $
-      encode $
-        object
-          [ "timestamp" .= en,
-            "loggerId" .= logId,
-            "threadId" .= show tid,
-            "durationMs" .= ((diffUTCTime en ts) * 1000),
-            "message" .= outcome
-          ]
+  atomically $
+    writeTBQueue queue $
+      LBS.toStrict $
+        encode $
+          object
+            [ "timestamp" .= en,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
+              "durationMs" .= ((diffUTCTime en ts) * 1000),
+              "message" .= outcome
+            ]
 
 logError' :: (ToJSON a, MonadIO m) => Logger -> Text -> a -> m ()
-logError' chan logId err = liftIO $ do
+logError' queue logId err = liftIO $ do
   ts <- getCurrentTime
   tid <- myThreadId
-  writeChan chan $
-    LBS.toStrict $
-      encode $
-        object
-          [ "timestamp" .= ts,
-            "loggerId" .= logId,
-            "threadId" .= show tid,
-            "error" .= err
-          ]
+  atomically $
+    writeTBQueue queue $
+      LBS.toStrict $
+        encode $
+          object
+            [ "timestamp" .= ts,
+              "loggerId" .= logId,
+              "threadId" .= show tid,
+              "error" .= err
+            ]
